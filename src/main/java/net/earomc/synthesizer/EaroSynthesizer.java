@@ -39,7 +39,7 @@ public class EaroSynthesizer {
 
     public static void main(String[] args) throws FileNotFoundException {
         EaroSynthesizer synthesizer = new EaroSynthesizer();
-        float[] sineWaves = sineWaveSamples(20, 8000);
+        float[] sineWaves = sineWaveSamples(0, 8000);
         synthesizer.playSamples(sineWaves, AUDIO_FORMAT);
         //synthesizer.playAudioFile("ImperialMarch60.wav");
         //displayChart(sineWaves);
@@ -48,7 +48,7 @@ public class EaroSynthesizer {
     public static float[] sineWaveSamples(int freq, int durationMillis) {
         float[] samples = new float[(int) Math.ceil(SAMPLE_RATE * (durationMillis / 1000f))];
         double fullScale = fullScale(SAMPLE_SIZE) - 1;
-        float volume = 1f; // has to be value between -1 and 1
+        float volume = 0.02f; // has to be value between -1 and 1
         for (int i = 0; i < samples.length; i++) {
             double timeSeconds = 1d * i / SAMPLE_RATE; //
             samples[i] = sinFunc(volume, freq + ((i * 20f) / SAMPLE_RATE), timeSeconds);
