@@ -10,6 +10,24 @@ import static java.lang.Math.*;
 /**
  * <p>Performs simple audio format conversion.</p>
  *
+ * <p>Encodes samples (represented as floats) into bytes that represent the audio in the given audio format</p>
+ * <p>
+ * An audio sample is represented as a float with the range -1 to 1.
+ * 1 Meaning the speaker membrane is fully extended,
+ * -1 meaning the speaker membrane is fully retracted, 0 meaning a neutral position.
+ * </p>
+ * The java "float" is a 32-bit signed floating point number,
+ * meaning the maximum sample size for this class is 32-bit, which is more than enough for the vast majority of audio applications.
+ * (For example: Most audio is in 16-bit and some very high quality audio has a 24-bit sample size.)
+ * The sample size also known as "(audio) bit depth" or "bits per sample" defines how many bits are there to represent
+ * each sample. The higher the sample size, the more possible values are there to represent one sample. the lower the quantization error and therefore the higher the audio quality/accuracy.
+ * <p>More info on wikipedia: <a href="https://en.wikipedia.org/wiki/Audio_bit_depth">...</a></p>
+ * <p></p>
+ *
+ * <p>This class turns arrays of samples (of floats) into arrays of bytes. One byte is only 8 bit, while most audio
+ * is more than that, so each sample
+ * </p>
+ *
  * <p>Example usage:</p>
  *
  * <pre>{@code  AudioInputStream ais = ... ;
@@ -38,17 +56,17 @@ public final class SimpleAudioConversion {
     /**
      * Converts from a byte array to an audio sample float array.
      *
-     * @param bytes   the byte array, filled by the AudioInputStream
-     * @param samples an array to fill up with audio samples
-     * @param bytesLen    the return value of AudioInputStream.read / amount of read bytes from an InputStream
-     * @param fmt     the source AudioFormat
+     * @param bytes    the byte array, filled by the AudioInputStream
+     * @param samples  an array to fill up with audio samples
+     * @param bytesLen the return value of AudioInputStream.read / amount of read bytes from an InputStream
+     * @param fmt      the source AudioFormat
      * @return the number of valid audio samples converted
      * @throws NullPointerException           if bytes, samples or fmt is null
      * @throws ArrayIndexOutOfBoundsException if bytes.length is less than bytesLen or
      *                                        if samples.length is less than bytesLen / bytesPerSample(fmt.getSampleSizeInBits())
      */
-    public static int decode(byte @NotNull[] bytes ,
-                             float @NotNull[] samples,
+    public static int decode(byte @NotNull [] bytes,
+                             float @NotNull [] samples,
                              int bytesLen,
                              @NotNull AudioFormat fmt) {
         int bitsPerSample = fmt.getSampleSizeInBits();
@@ -60,46 +78,54 @@ public final class SimpleAudioConversion {
         int i = 0;
         int s = 0;
         while (i < bytesLen) {
-            long temp = unpackBits(bytes, i, isBigEndian, bytesPerSample);
+            long bits = unpackBits(bytes, i, isBigEndian, bytesPerSample);
             float sample = 0f;
 
             if (encoding == Encoding.PCM_SIGNED) {
-                temp = extendSign(temp, bitsPerSample);
-                sample = (float) (temp / fullScale);
+                bits = extendSign(bits, bitsPerSample);
+                sample = (float) (bits / fullScale);
 
             } else if (encoding == Encoding.PCM_UNSIGNED) {
-                temp = unsignedToSigned(temp, bitsPerSample);
-                sample = (float) (temp / fullScale);
+                bits = unsignedToSigned(bits, bitsPerSample);
+                sample = (float) (bits / fullScale);
 
             } else if (encoding == Encoding.PCM_FLOAT) {
                 if (bitsPerSample == 32) {
-                    sample = Float.intBitsToFloat((int) temp);
+                    sample = Float.intBitsToFloat((int) bits);
                 } else if (bitsPerSample == 64) {
-                    sample = (float) Double.longBitsToDouble(temp);
+                    sample = (float) Double.longBitsToDouble(bits);
                 }
             } else if (encoding == Encoding.ULAW) {
-                sample = bitsToMuLaw(temp);
+                sample = bitsToMuLaw(bits);
 
             } else if (encoding == Encoding.ALAW) {
-                sample = bitsToALaw(temp);
+                sample = bitsToALaw(bits);
             }
 
             samples[s] = sample;
-
+            // i = bytes decoded
             i += bytesPerSample;
+            // s = samples decoded
             s++;
         }
 
         return s;
     }
 
+    public static float[] decode(byte[] bytes, int sampleSize, AudioFormat audioFormat) {
+        float[] samples = new float[(int) ceil((float) bytes.length / bytesPerSample(sampleSize))];
+        decode(bytes, samples, bytes.length, audioFormat);
+        return samples;
+    }
+
     /**
-     * Converts from an audio sample float array to a byte array.
+     * Converts from an audio sample float array to a byte array which is made of bytes that resemble the given audio format.
+     * samples (floats) -> bytes for given audio format.
      *
-     * @param samples an array of audio samples to encode
-     * @param bytes   an array to fill up with bytes
-     * @param samplesLen  the return value of the decode method / number of samples that are taken from the given samples array starting at index 0.
-     * @param fmt     the destination AudioFormat
+     * @param samples    an array of audio samples to encode
+     * @param bytes      an array to fill up with encoded audio bytes
+     * @param samplesLen the return value of the decode method / number of samples that are taken from the given samples array starting at index 0.
+     * @param fmt        the destination AudioFormat
      * @return the number of valid bytes converted
      * @throws NullPointerException           if samples, bytes or fmt is null
      * @throws ArrayIndexOutOfBoundsException if samples.length is less than samplesLen or
@@ -116,38 +142,43 @@ public final class SimpleAudioConversion {
         double fullScale = fullScale(bitsPerSample);
 
         int i = 0; // position in the given byte array where the packed (into bytes) bits represented as a long are written to.
-        int s = 0; // sample counter
+        int s = 0; // sample counter increased with every loop iteration
         while (s < samplesLen) {
             float sample = samples[s];
-            long temp = 0L;
+            long bits = 0L;
 
             if (encoding == Encoding.PCM_SIGNED) {
-                temp = (long) (sample * fullScale);
+                bits = (long) (sample * fullScale);
 
             } else if (encoding == Encoding.PCM_UNSIGNED) {
-                temp = (long) (sample * fullScale);
-                temp = signedToUnsigned(temp, bitsPerSample);
-
+                bits = (long) (sample * fullScale);
+                bits = signedToUnsigned(bits, bitsPerSample);
             } else if (encoding == Encoding.PCM_FLOAT) {
                 if (bitsPerSample == 32) {
-                    temp = Float.floatToRawIntBits(sample);
+                    bits = Float.floatToRawIntBits(sample);
                 } else if (bitsPerSample == 64) {
-                    temp = Double.doubleToRawLongBits(sample);
+                    bits = Double.doubleToRawLongBits(sample);
                 }
             } else if (encoding == Encoding.ULAW) {
-                temp = muLawToBits(sample);
+                bits = muLawToBits(sample);
 
             } else if (encoding == Encoding.ALAW) {
-                temp = aLawToBits(sample);
+                bits = aLawToBits(sample);
             }
 
-            packBits(bytes, i, temp, isBigEndian, bytesPerSample);
+            packBits(bytes, i, bits, isBigEndian, bytesPerSample);
 
-            i += bytesPerSample; // increases i by the
+            i += bytesPerSample;
             s++;
         }
 
         return i;
+    }
+
+    public static byte[] encode(float[] samples, int sampleSizeBits, AudioFormat audioFormat) {
+        byte[] encodedSampleBytes = new byte[samples.length * bytesPerSample(sampleSizeBits)];
+        encode(samples, encodedSampleBytes, samples.length, audioFormat);
+        return encodedSampleBytes;
     }
 
     /**
@@ -187,9 +218,10 @@ public final class SimpleAudioConversion {
      * <p>
      * Extracts one sample in the given byte array into one long representing the sample as a fugging number.
      * Takes care of byte order n shit.
-     * @param bytes The bytes that are turned into a long
-     * @param i The starting point / offset of in the byte array. (Where the sample starts)
-     * @param isBigEndian Whether the byte order of the sample / audio format is big endian or little endian
+     *
+     * @param bytes          The bytes that are turned into a long
+     * @param i              The starting point / offset of in the byte array. (Where the sample starts)
+     * @param isBigEndian    Whether the byte order of the sample / audio format is big endian or little endian
      * @param bytesPerSample How many bytes there are in a sample in the audio format.
      * @return Returns the sample as a long in
      */
@@ -273,10 +305,11 @@ public final class SimpleAudioConversion {
      * <p>
      * Basically packs bits represented as long to bytes represented as byte array.
      * Turns a sample long (temp) into a byte array (with the lengths of bytesPerSample) and writes that as a section to the given byte array at position i.
-     * @param bytes The byte array you want to write t
-     * @param i The position in the given byte array where the bytes are written to.
-     * @param temp this long represents a sample
-     * @param isBigEndian if true = big endian, if false = little endian.
+     *
+     * @param bytes          The byte array you want to write t
+     * @param i              The position in the given byte array where the bytes are written to.
+     * @param temp           this long represents a sample
+     * @param isBigEndian    if true = big endian, if false = little endian.
      * @param bytesPerSample How many bytes are in the sample you want to turn into bytes.
      */
 

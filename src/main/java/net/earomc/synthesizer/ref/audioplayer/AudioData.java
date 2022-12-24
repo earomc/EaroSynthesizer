@@ -1,4 +1,4 @@
-package net.earomc.synthesizer.audioplayer;
+package net.earomc.synthesizer.ref.audioplayer;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.DataLine;

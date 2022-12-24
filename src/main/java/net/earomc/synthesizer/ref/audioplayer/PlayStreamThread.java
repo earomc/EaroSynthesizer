@@ -1,4 +1,4 @@
-package net.earomc.synthesizer.audioplayer;
+package net.earomc.synthesizer.ref.audioplayer;
 
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.SourceDataLine;
@@ -57,7 +57,7 @@ class PlayStreamThread extends PlayThread {
                     if (cnt > 0) {
                         sourceDataLine.write(tempBuffer, 0, cnt);
                     }
-                    Thread.sleep(1);
+                    sleep(1);
                 }
 
                 // using this loop instead of sourceDataLine.drain() in case

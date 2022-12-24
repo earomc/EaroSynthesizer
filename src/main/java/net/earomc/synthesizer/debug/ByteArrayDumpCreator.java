@@ -6,7 +6,7 @@ import java.util.Arrays;
 public class ByteArrayDumpCreator extends DumpCreator {
 
     public ByteArrayDumpCreator(String fileName) throws IOException {
-        super(fileName);
+        super(fileName + "_bytearray_dump");
     }
 
     public void addByteArray(byte[] bytes, int bytesRead) throws IOException {

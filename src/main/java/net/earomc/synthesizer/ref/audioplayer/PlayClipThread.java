@@ -1,4 +1,4 @@
-package net.earomc.synthesizer.audioplayer;
+package net.earomc.synthesizer.ref.audioplayer;
 
 import javax.sound.sampled.Clip;
 
@@ -17,7 +17,7 @@ class PlayClipThread extends PlayThread {
             // give the thread that is playing the clip a chance to
             // stop the clip before we restart it
             try {
-                Thread.sleep(1);
+                sleep(1);
             } catch (InterruptedException e) {
                 // don't do anything if the thread was interrupted
             }

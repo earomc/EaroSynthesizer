@@ -1,7 +1,8 @@
 package net.earomc.synthesizer;
 
 import net.earomc.synthesizer.debug.ByteArrayDumpCreator;
-import net.earomc.synthesizer.audioplayer.AudioPlayer;
+import net.earomc.synthesizer.debug.FloatSampleArrayDumpCreator;
+import net.earomc.synthesizer.waveform.Waveform;
 import org.jetbrains.annotations.Nullable;
 import org.knowm.xchart.SwingWrapper;
 import org.knowm.xchart.XYChart;
@@ -11,13 +12,31 @@ import org.knowm.xchart.style.Styler;
 import org.knowm.xchart.style.XYStyler;
 
 import javax.sound.sampled.*;
-import java.io.*;
 
-import static net.earomc.synthesizer.SimpleAudioConversion.*;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+
+import static net.earomc.synthesizer.SimpleAudioConversion.decode;
+import static net.earomc.synthesizer.SimpleAudioConversion.encode;
 
 public class EaroSynthesizer {
 
-    private static final int SAMPLE_RATE = 48000; // in Hertz/Hz | means 48000 samples per second
+    public static final Logger LOGGER = Logger.getLogger("EaroSynthesizer");
+    private ScheduledFuture<?> future;
+    private ScheduledExecutorService executor;
+
+
+    private static final int SAMPLE_RATE = 44100; // in Hertz/Hz | means 48000 samples per second
     private static final int FRAME_RATE = SAMPLE_RATE;
     private static final int SAMPLE_SIZE = 16; // in bits / bits per sample | 16 bits = 2 bytes | like a short
     private static final int CHANNELS = 2; // STEREO
@@ -30,52 +49,91 @@ public class EaroSynthesizer {
             calcPCMFrameSize(CHANNELS, SAMPLE_SIZE),
             FRAME_RATE,
             false);
+    private static final float VOLUME = 1f / 100; // has to be a value between -1 and 1
+
 
     public EaroSynthesizer() {
     }
 
-    //TODO: Find way to constantly stream floats. DataInputStream?
-    //TODO: Fix audio crackle
+    //TODO: Make oscillator constantly output samples like an OutputStream
 
     public static void main(String[] args) throws FileNotFoundException {
-        EaroSynthesizer synthesizer = new EaroSynthesizer();
-        float[] sineWaves = sineWaveSamples(0, 8000);
-        synthesizer.playSamples(sineWaves, AUDIO_FORMAT);
-        //synthesizer.playAudioFile("ImperialMarch60.wav");
-        //displayChart(sineWaves);
-    }
+        LOGGER.setLevel(Level.ALL);
 
-    public static float[] sineWaveSamples(int freq, int durationMillis) {
-        float[] samples = new float[(int) Math.ceil(SAMPLE_RATE * (durationMillis / 1000f))];
-        double fullScale = fullScale(SAMPLE_SIZE) - 1;
-        float volume = 0.02f; // has to be value between -1 and 1
-        for (int i = 0; i < samples.length; i++) {
-            double timeSeconds = 1d * i / SAMPLE_RATE; //
-            samples[i] = sinFunc(volume, freq + ((i * 20f) / SAMPLE_RATE), timeSeconds);
+        EaroSynthesizer synthesizer = new EaroSynthesizer();
+        //float[] sineWaves = sineWaveSamples(0, 3000);
+        float[] samplesTaunt = decode(synthesizer.getAudioFileBytes("taunt.wav"), SAMPLE_SIZE, AUDIO_FORMAT);
+        //float[] waveSamples = waveSamples(Waveform.SINE, 27.5f , VOLUME, 2);
+
+        FloatArrayConcatenator concatenator = new FloatArrayConcatenator();
+        Waveform[] waveforms = {Waveform.NOISE};
+        for (Waveform waveForm : Waveform.WAVEFORMS) {
+            concatenator.append(waveSamples(waveForm, 110, VOLUME, 1f, Util.phase01ToRadians(0.5f)));
         }
 
-        /*try (FloatSampleArrayDumpCreator dumpCreator = new FloatSampleArrayDumpCreator("sine_wave_samples")) {
-            dumpCreator.createDump(samples, fullScale, freq, SAMPLE_RATE, durationMillis);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }*/
+        float[] samples = concatenator.concat();
+        synthesizer.playSamples(samples, AUDIO_FORMAT, "waves");
+        displayChart(samples);
+        //synthesizer.playAudioFile("yoyo.wav");
+        //byte[] audioFileBytes = synthesizer.getAudioFileBytes("yoyo.wav");
+        //float[] audioFileSamples = decode(audioFileBytes, SAMPLE_SIZE, AUDIO_FORMAT);
+        //float[] mixedSamples = synthesizer.mix(audioFileSamples, sineWaves);
+        //synthesizer.playSamples(mixedSamples, AUDIO_FORMAT);
+    }
+
+    private float[] mix(float[] samples1, float[] samples2) {
+        int max = Math.max(samples1.length, samples2.length);
+        float[] longerSamples;
+        if (samples1.length == max) {
+            longerSamples = samples1;
+        } else {
+            longerSamples = samples2;
+        }
+        float[] mixedSamples = new float[max];
+        for (int i = 0; i < mixedSamples.length; i++) {
+            if (i < samples1.length && i < samples2.length) {
+                mixedSamples[i] = 0.5f * (samples1[i] + samples2[i]);
+            } else {
+                mixedSamples[i] = longerSamples[i];
+            }
+        }
+        return mixedSamples;
+    }
+
+    public static float[] waveSamples(Waveform waveform, float freq, float amp, float durationSeconds, float phaseRadians) {
+        float[] samples = Util.createEmptySampleArray(SAMPLE_RATE, durationSeconds);
+        float periodSeconds = Util.freqToPeriod(freq);
+        for (int i = 0; i < samples.length; i++) {
+            float timeSeconds = ((float) i) / SAMPLE_RATE;
+            samples[i] = waveform.function(timeSeconds, periodSeconds, amp, phaseRadians);
+        }
         return samples;
     }
 
-    private static float sinFunc(float amplitude, float freq, double timeSeconds) {
+    public static float[] sawWaveSamples(float freq, float amp, int durationSeconds) {
+        return null;
+    }
+
+    private static float sinFunc(float amplitude, float freq, float timeSeconds) {
         return (float) (amplitude * Math.sin(2f * Math.PI * freq * timeSeconds));
     }
 
-    public void playSamples(float[] samples, AudioFormat audioFormat) {
-        byte[] encodedSampleBytes = new byte[samples.length * bytesPerSample(SAMPLE_SIZE)];
-        encode(samples, encodedSampleBytes, samples.length, audioFormat);
-        InputStream encSampleBytesStream = new BufferedInputStream(new ByteArrayInputStream(encodedSampleBytes), BUFFER_SIZE);
+    public void playSamples(float[] samples, AudioFormat audioFormat, @Nullable String dumpFileName) {
+        byte[] encodedSampleBytes = encode(samples, SAMPLE_SIZE, audioFormat);
+        InputStream encSampleBytesStream = new ByteArrayInputStream(encodedSampleBytes);
         //InputStream encSampleBytesStream = new ByteArrayInputStream(encodedSampleBytes);
         try {
-            playFromInputStream(encSampleBytesStream, audioFormat);
+            FloatSampleArrayDumpCreator dumpCreator1 = new FloatSampleArrayDumpCreator(dumpFileName);
+            dumpCreator1.createDump(samples, (int) audioFormat.getSampleRate());
+            dumpCreator1.close();
+            playFromInputStream(encSampleBytesStream, audioFormat, dumpFileName);
         } catch (IOException | LineUnavailableException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void playSamples(float[] samples, AudioFormat audioFormat) {
+        playSamples(samples, audioFormat, null);
     }
 
     public void playFromInputStream(InputStream inputStream, AudioFormat format) throws LineUnavailableException, IOException {
@@ -85,8 +143,6 @@ public class EaroSynthesizer {
     private void playFromInputStream(InputStream inputStream, AudioFormat format, @Nullable String dumpFileName) throws IOException, LineUnavailableException {
         DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
 
-        // try with resources auto-closes sourcedataline before audio playback is finished.
-        //try () {
         var sourceDataLine = (SourceDataLine) AudioSystem.getLine(info);
         sourceDataLine.open();
         sourceDataLine.start();
@@ -97,14 +153,29 @@ public class EaroSynthesizer {
         }
         byte[] buffer = new byte[BUFFER_SIZE];
         int bytesRead;
+
         while ((bytesRead = inputStream.read(buffer)) != -1) {
             sourceDataLine.write(buffer, 0, bytesRead);
             if (dumpCreator != null) dumpCreator.addByteArray(buffer, bytesRead);
+            //float[] samples = decode(buffer, BUFFER_SIZE, AUDIO_FORMAT);
+            //if (dumpCreator1 != null) dumpCreator1.createDump(samples, SAMPLE_RATE);
+            LOGGER.info("Wrote " + bytesRead + " bytes to sdl");
         }
+
+
+        this.executor = Executors.newSingleThreadScheduledExecutor();
+        executor.schedule(() -> {
+            try {
+                inputStream.close();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            LOGGER.info("Closed SDL");
+            if (future != null) future.cancel(true);
+            if (executor != null) executor.shutdown();
+        }, 3, TimeUnit.SECONDS);
+
         if (dumpCreator != null) dumpCreator.close();
-
-        //}
-
     }
 
     private static void displayChart(float[] samples) {
@@ -126,37 +197,47 @@ public class EaroSynthesizer {
         for (int i = 0; i < samples.length; i++) {
             seconds[i] = (i * 1f) / SAMPLE_RATE;
         }
+        chart.addSeries("Samples", seconds, samples);
 
+        /*
         float[] count = new float[samples.length];
         for (float i = 0; i < samples.length; i++) {
             count[(int) i] = i;
         }
-        chart.addSeries("sin", count, samples);
+        chart.addSeries("Samples", count, samples);
+         */
 
+        LOGGER.info("Init SwingWrapper " + chart);
         new SwingWrapper<>(chart).displayChart();
     }
-
 
     public void playAudioFile(String fileName) throws FileNotFoundException {
         InputStream resource = getClass().getResourceAsStream("/" + fileName);
         if (resource == null) throw new FileNotFoundException(fileName + " could not be found.");
         BufferedInputStream bis = new BufferedInputStream(resource, BUFFER_SIZE);
-        try (AudioInputStream audioInputStream = AudioPlayer.convertToPCM(AudioSystem.getAudioInputStream(bis))){
-            System.out.println("Playing " + fileName);
+        try (AudioInputStream audioInputStream = convertToDefaultFormat(AudioSystem.getAudioInputStream(bis))) {
+            LOGGER.info("Playing " + fileName);
             playFromInputStream(audioInputStream, audioInputStream.getFormat(), fileName);
         } catch (UnsupportedAudioFileException | IOException | LineUnavailableException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private float[] squareWave(int amplitude, int phase, int frequency) {
-        int seconds = 1;
-        float[] samples = new float[SAMPLE_RATE * seconds];
-        for (int i = 0; i < samples.length; i++) {
-
+    public byte[] getAudioFileBytes(String fileName) throws FileNotFoundException {
+        InputStream resource = getClass().getResourceAsStream("/" + fileName);
+        if (resource == null) throw new FileNotFoundException(fileName + " could not be found.");
+        BufferedInputStream bis = new BufferedInputStream(resource, BUFFER_SIZE);
+        try (AudioInputStream audioInputStream = convertToDefaultFormat(AudioSystem.getAudioInputStream(bis))) {
+            return audioInputStream.readAllBytes();
+        } catch (UnsupportedAudioFileException | IOException e) {
+            throw new RuntimeException(e);
         }
-        return samples;
     }
+
+    public static AudioInputStream convertToDefaultFormat(AudioInputStream audioInputStream) {
+        return AudioSystem.getAudioInputStream(AUDIO_FORMAT, audioInputStream);
+    }
+
 
     public static int calcPCMFrameSize(int channels, int sampleSize) {
         return channels * sampleSize / Byte.SIZE;

@@ -1,4 +1,4 @@
-package net.earomc.synthesizer.audioplayer;
+package net.earomc.synthesizer.ref.audioplayer;
 
 abstract class PlayThread extends Thread {
     public abstract void setLooping(boolean loop);
