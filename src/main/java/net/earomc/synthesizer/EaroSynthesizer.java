@@ -1,5 +1,11 @@
 package net.earomc.synthesizer;
 
+import javafx.application.Application;
+import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 import net.earomc.synthesizer.debug.ByteArrayDumpCreator;
 import net.earomc.synthesizer.debug.FloatSampleArrayDumpCreator;
 import net.earomc.synthesizer.waveform.Waveform;
@@ -12,29 +18,25 @@ import org.knowm.xchart.style.Styler;
 import org.knowm.xchart.style.XYStyler;
 
 import javax.sound.sampled.*;
-
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static net.earomc.synthesizer.SimpleAudioConversion.decode;
 import static net.earomc.synthesizer.SimpleAudioConversion.encode;
 
-public class EaroSynthesizer {
+public class EaroSynthesizer
+        //extends Application
+{
+
 
     public static final Logger LOGGER = Logger.getLogger("EaroSynthesizer");
     private ScheduledFuture<?> future;
     private ScheduledExecutorService executor;
-
 
     private static final int SAMPLE_RATE = 44100; // in Hertz/Hz | means 48000 samples per second
     private static final int FRAME_RATE = SAMPLE_RATE;
@@ -55,14 +57,61 @@ public class EaroSynthesizer {
     public EaroSynthesizer() {
     }
 
+    public static void main(String[] args) {
+        //launch(args);
+        System.out.println("lel");
+    }
+
+    //@Override
+    public void start(Stage stage) throws Exception {
+        LOGGER.setLevel(Level.ALL);
+        EaroSynthesizer synthesizer = new EaroSynthesizer();
+        //synthesizer.waitForKeyboardInput();
+        //synthesizer.playTestSequence();
+        Canvas canvas = new Canvas();
+        PixelWriter pixelWriter = canvas.getGraphicsContext2D().getPixelWriter();
+        Scene scene = new Scene(new VBox(canvas), 1280, 720);
+
+        // do shit with pixelWriter
+        //https://stackoverflow.com/questions/28417623/the-fastest-filling-one-pixel-in-javafx
+        stage.setTitle("Hello!");
+        stage.setScene(scene);
+        stage.show();
+
+    }
+
     //TODO: Make oscillator constantly output samples like an OutputStream
 
-    public static void main(String[] args) throws FileNotFoundException {
-        LOGGER.setLevel(Level.ALL);
 
-        EaroSynthesizer synthesizer = new EaroSynthesizer();
+    public void waitForKeyboardInput() throws IOException {
+        boolean running = true;
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        while (true) {
+            String readLine = reader.readLine();
+            if (readLine.equalsIgnoreCase("stop")) break;
+            if (readLine.startsWith("playsound")) {
+                float[] samples;
+                if (readLine.endsWith("sine")) {
+                    samples = waveSamples(Waveform.SINE, 100, VOLUME, 1, 0);
+                } else if (readLine.endsWith("saw")) {
+                    samples = waveSamples(Waveform.SAW, 100, VOLUME, 1, 0);
+                } else if (readLine.endsWith("triangle")) {
+                    samples = waveSamples(Waveform.TRIANGLE, 100, VOLUME, 1, 0);
+                } else if (readLine.endsWith("noise")) {
+                    samples = waveSamples(Waveform.NOISE, 100, VOLUME, 1, 0);
+                } else if (readLine.endsWith("square")) {
+                    samples = waveSamples(Waveform.SQUARE, 100, VOLUME, 1, 0);
+                } else samples = new float[0];
+                playSamples(samples, AUDIO_FORMAT);
+            }
+            System.out.println("Invalid command");
+        }
+    }
+
+
+    private void playTestSequence() throws FileNotFoundException {
         //float[] sineWaves = sineWaveSamples(0, 3000);
-        float[] samplesTaunt = decode(synthesizer.getAudioFileBytes("taunt.wav"), SAMPLE_SIZE, AUDIO_FORMAT);
+        float[] samplesTaunt = decode(getAudioFileBytes("taunt.wav"), SAMPLE_SIZE, AUDIO_FORMAT);
         //float[] waveSamples = waveSamples(Waveform.SINE, 27.5f , VOLUME, 2);
 
         FloatArrayConcatenator concatenator = new FloatArrayConcatenator();
@@ -71,9 +120,14 @@ public class EaroSynthesizer {
             concatenator.append(waveSamples(waveForm, 110, VOLUME, 1f, Util.phase01ToRadians(0.5f)));
         }
 
-        float[] samples = concatenator.concat();
-        synthesizer.playSamples(samples, AUDIO_FORMAT, "waves");
-        displayChart(samples);
+        float[] allWaveformSamples = concatenator.concat();
+        float[] waveformSamples1 = waveSamples(Waveform.TRIANGLE, 25, 0.02f, 2, 0);
+        float[] waveformSamples2 = waveSamples(Waveform.SAW, 80, 0.05f, 8, 0);
+        float[] waveformSamples3 = waveSamples(Waveform.SAW, 160, 0.05f, 8, 0);
+
+        //displayChart(waveformSamples1);
+        playSamples(waveformSamples1, AUDIO_FORMAT, "waves");
+        //displayChart(samples);
         //synthesizer.playAudioFile("yoyo.wav");
         //byte[] audioFileBytes = synthesizer.getAudioFileBytes("yoyo.wav");
         //float[] audioFileSamples = decode(audioFileBytes, SAMPLE_SIZE, AUDIO_FORMAT);
@@ -105,7 +159,7 @@ public class EaroSynthesizer {
         float periodSeconds = Util.freqToPeriod(freq);
         for (int i = 0; i < samples.length; i++) {
             float timeSeconds = ((float) i) / SAMPLE_RATE;
-            samples[i] = waveform.function(timeSeconds, periodSeconds, amp, phaseRadians);
+            samples[i] = waveform.sample(timeSeconds, periodSeconds, amp, phaseRadians);
         }
         return samples;
     }
@@ -120,7 +174,7 @@ public class EaroSynthesizer {
 
     public void playSamples(float[] samples, AudioFormat audioFormat, @Nullable String dumpFileName) {
         byte[] encodedSampleBytes = encode(samples, SAMPLE_SIZE, audioFormat);
-        InputStream encSampleBytesStream = new ByteArrayInputStream(encodedSampleBytes);
+        ByteArrayInputStream encSampleBytesStream = new ByteArrayInputStream(encodedSampleBytes);
         //InputStream encSampleBytesStream = new ByteArrayInputStream(encodedSampleBytes);
         try {
             FloatSampleArrayDumpCreator dumpCreator1 = new FloatSampleArrayDumpCreator(dumpFileName);
@@ -163,6 +217,8 @@ public class EaroSynthesizer {
         }
 
 
+        // 3 Seconds after playback, close SourceDataLine and inputStream to make the program be able to finish.
+        System.out.println("Audio playback should be finished... Closing SDL in 3 seconds:");
         this.executor = Executors.newSingleThreadScheduledExecutor();
         executor.schedule(() -> {
             try {
@@ -170,7 +226,7 @@ public class EaroSynthesizer {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-            LOGGER.info("Closed SDL");
+            System.out.println("Closed SDL");
             if (future != null) future.cancel(true);
             if (executor != null) executor.shutdown();
         }, 3, TimeUnit.SECONDS);

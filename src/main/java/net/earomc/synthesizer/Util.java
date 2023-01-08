@@ -63,9 +63,9 @@ public class Util {
         // 0 -> 0, 1 -> 2 * PI
         return (float) mapRange(0, 1, 0, 2 * Math.PI, phase01);
     }
-
     /**
      * Method represents the phase function.
+     * The phase value is basically a point in the wave period.
      * <p>
      * See
      * <a href="https://en.wikipedia.org/wiki/Phase_(waves)#Mathematical_definition">Phase "Mathematical Definition" on Wikipedia</a>
@@ -76,11 +76,13 @@ public class Util {
      * @param timeSeconds0  The "origin" time (t0), beginning of the cycle in seconds.
      * @return Returns the phase in radians.
      */
-    static float calcPhase(float periodSeconds, float timeSeconds, float timeSeconds0) {
+    public static float calcPhase(float periodSeconds, float timeSeconds, float timeSeconds0) {
         return (float) (2 * Math.PI * discardIntPart((timeSeconds - timeSeconds0) / periodSeconds));
     }
 
     /**
+     * Removes the integer part of a fractional number. 7.2 -> 0.2, 1.5 -> 0.5.
+     * So it is always below 0.
      * <p>
      * See
      * <a href="https://en.wikipedia.org/wiki/Phase_(waves)#Mathematical_definition">Phase "Mathematical Definition" on Wikipedia</a>
