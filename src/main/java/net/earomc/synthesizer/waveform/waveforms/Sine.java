@@ -5,7 +5,7 @@ import net.earomc.synthesizer.waveform.Waveform;
 
 public class Sine implements Waveform {
     @Override
-    public float sample(float timeSeconds, float periodSeconds, float amp, float phaseRadians) {
+    public float sample(float timeSeconds, double periodSeconds, float amp, float phaseRadians) {
         float sample = (float) (amp * Math.sin((2f * Math.PI * timeSeconds - phaseRadians) / periodSeconds));
 
         return sample;

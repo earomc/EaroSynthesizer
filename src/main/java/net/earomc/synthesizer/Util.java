@@ -92,7 +92,7 @@ public class Util {
         return in - (float) Math.floor(in);
     }
 
-    static float freqToPeriod(float freqHz) {
+    static double freqToPeriod(double freqHz) {
         return 1f / freqHz;
     }
 
@@ -108,6 +108,16 @@ public class Util {
         if (octaves == 0) return freq;
         if (octaves == 1) return freq / 2;
         return freq / (float) Math.pow(2, octaves);
+    }
+
+    public static float calculateNoteFreq(float startFreq, int keyNumber) {
+        float freq = (float) Math.pow(2, ((keyNumber - 49d) / 12d)) * startFreq;
+        System.out.println("freq = " + freq);;
+        return freq;
+    }
+
+    public static float calculateNoteFreq(int keyNumber) {
+        return calculateNoteFreq(440.0f, keyNumber);
     }
 
     public static float[] concatFloatArrays(float[] ... floatArrays) {

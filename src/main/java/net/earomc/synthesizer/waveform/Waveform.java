@@ -13,6 +13,6 @@ public interface Waveform {
     Waveform NOISE = new Noise();
     Waveform[] WAVEFORMS = {SAW, TRIANGLE, SINE, SQUARE, NOISE};
 
-    float sample(float timeSeconds, float periodSeconds, float amp, float phaseRadians);
+    float sample(float timeSeconds, double periodSeconds, float amp, float phaseRadians);
 
 }
